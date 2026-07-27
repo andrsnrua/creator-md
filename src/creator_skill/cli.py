@@ -8,6 +8,7 @@ from pathlib import Path
 from .content_project import ContentProject
 from .errors import CreatorSkillError
 from .project import CreatorProject, doctor_data
+from .web_ui import serve
 
 
 def _common(subparser: argparse.ArgumentParser) -> None:
@@ -47,6 +48,11 @@ def parser() -> argparse.ArgumentParser:
     export = commands.add_parser("export")
     _common(export)
     export.add_argument("--project", required=True)
+
+    web = commands.add_parser("serve")
+    _common(web)
+    web.add_argument("--host", default="127.0.0.1")
+    web.add_argument("--port", default=8765, type=int)
     return root
 
 
@@ -79,6 +85,8 @@ def run(args: argparse.Namespace) -> int:
         _print(ContentProject(args.workspace_root, args.project).status())
     elif args.command == "export":
         _print(ContentProject(args.workspace_root, args.project).export())
+    elif args.command == "serve":
+        serve(args.workspace_root, args.host, args.port)
     return 0
 
 

@@ -75,6 +75,14 @@ Revisar dependencias:
 creator-md doctor
 ```
 
+Abrir la interfaz local:
+
+```bash
+creator-md serve
+```
+
+Después visita `http://127.0.0.1:8765`.
+
 ## Archivos de cada proyecto
 
 ```text
