@@ -1,0 +1,15 @@
+{
+  "video": {
+    "id": "1002",
+    "url": "https://www.tiktok.com/@demo/video/1002",
+    "title": "Escalar presupuesto",
+    "published_at": "20260702",
+    "duration": 38,
+    "creator": "demo"
+  },
+  "segments": [
+    {"start": 0, "end": 20, "text": "Antes de escalar confirma que el resultado sea estable durante varios días."},
+    {"start": 20, "end": 38, "text": "Incrementa de forma controlada y vuelve a medir."}
+  ]
+}
+

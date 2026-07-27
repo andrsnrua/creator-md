@@ -1,0 +1,18 @@
+{
+  "video": {
+    "id": "1001",
+    "url": "https://www.tiktok.com/@demo/video/1001",
+    "title": "Estructura de campañas",
+    "published_at": "20260701",
+    "duration": 42,
+    "creator": "demo"
+  },
+  "segments": [
+    {"start": 0, "end": 18, "text": "Separa prospección y remarketing para poder leer mejor el rendimiento."},
+    {"start": 18, "end": 42, "text": "Compara cada cambio contra una línea base y documenta la hipótesis."}
+  ],
+  "visual_notes": [
+    {"at": 12, "text": "Se muestra una campaña de ventas y el presupuesto diario."}
+  ]
+}
+

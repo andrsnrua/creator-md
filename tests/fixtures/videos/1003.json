@@ -1,0 +1,18 @@
+{
+  "video": {
+    "id": "1003",
+    "url": "https://www.tiktok.com/@demo/video/1003",
+    "title": "Errores de creativos",
+    "published_at": "20260703",
+    "duration": 31,
+    "creator": "demo"
+  },
+  "segments": [
+    {"start": 0, "end": 15, "text": "No cambies audiencia, oferta y creativo al mismo tiempo."},
+    {"start": 15, "end": 31, "text": "Si cambias una variable puedes atribuir el resultado con más claridad."}
+  ],
+  "visual_notes": [
+    {"at": 8, "text": "Texto en pantalla: una variable por prueba."}
+  ]
+}
+
