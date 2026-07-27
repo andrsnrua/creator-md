@@ -27,3 +27,14 @@ def test_command_audit_redacts_secrets(tmp_path):
     record = json.loads(audit.read_text())
     assert "secret-value" not in json.dumps(record)
     assert "***REDACTED***" in record["args"]
+
+
+def test_command_runner_streams_output(tmp_path):
+    events = []
+    runner = CommandRunner(tmp_path / "commands.jsonl")
+    result = runner.run(
+        [sys.executable, "-c", "print('descargando'); print('listo')"],
+        on_output=lambda stream, line: events.append((stream, line.strip())),
+    )
+    assert result.returncode == 0
+    assert events == [("stdout", "descargando"), ("stdout", "listo")]

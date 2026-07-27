@@ -41,6 +41,11 @@ def parser() -> argparse.ArgumentParser:
     continuation.add_argument("--project", required=True)
     continuation.add_argument("--count", required=True, type=int)
 
+    retry = commands.add_parser("retry")
+    _common(retry)
+    retry.add_argument("--project", required=True)
+    retry.add_argument("--count", required=True, type=int)
+
     status = commands.add_parser("status")
     _common(status)
     status.add_argument("--project", required=True)
@@ -80,6 +85,10 @@ def run(args: argparse.Namespace) -> int:
             ContentProject(args.workspace_root, args.project).continue_from_history(
                 args.count
             )
+        )
+    elif args.command == "retry":
+        _print(
+            ContentProject(args.workspace_root, args.project).retry_failed(args.count)
         )
     elif args.command == "status":
         _print(ContentProject(args.workspace_root, args.project).status())

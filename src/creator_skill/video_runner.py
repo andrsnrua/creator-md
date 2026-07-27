@@ -7,7 +7,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Callable, Iterable, Iterator
 
 from .errors import CreatorSkillError
 from .models import Segment, Transcript, Video
@@ -80,17 +80,25 @@ class SummarizeAdapter:
         self.runner = runner
         self.executable = executable
 
-    def process(self, videos: list[Video], output_dir: Path) -> list[Transcript]:
+    def process(
+        self,
+        videos: list[Video],
+        output_dir: Path,
+        on_output: Callable[[str, str], None] | None = None,
+    ) -> list[Transcript]:
         if os.environ.get("CREATOR_SKILL_USE_SUMMARY_CLI", "").lower() not in {
             "1",
             "true",
             "yes",
         }:
-            return self._process_transcript_only(videos, output_dir)
+            return self._process_transcript_only(videos, output_dir, on_output)
         return self._process_with_summary_cli(videos, output_dir)
 
     def _process_transcript_only(
-        self, videos: list[Video], output_dir: Path
+        self,
+        videos: list[Video],
+        output_dir: Path,
+        on_output: Callable[[str, str], None] | None = None,
     ) -> list[Transcript]:
         output_dir.mkdir(parents=True, exist_ok=True)
         cache_dir = output_dir / ".cache" / "transcripts"
@@ -131,7 +139,8 @@ class SummarizeAdapter:
                     whisper_model,
                     "--language",
                     language,
-                ]
+                ],
+                on_output=on_output,
             )
             transcripts.append(transcript_from_json(result_path, video))
         return transcripts

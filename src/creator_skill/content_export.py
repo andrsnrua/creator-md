@@ -30,17 +30,23 @@ def _transcript_body(source: Path) -> str:
     body = body.split("## Información visual", 1)[0]
     body = body.split("## Nota de atribución", 1)[0]
     content: list[str] = []
-    source_line = ""
     for line in body.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("### "):
             continue
         if stripped.startswith("Fuente:"):
-            source_line = stripped
             continue
         content.append(stripped)
-    paragraph = " ".join(content)
-    return f"{paragraph}\n\n{source_line}".strip()
+    return " ".join(content)
+
+
+def _duration(value: float | None) -> str:
+    total = int(value or 0)
+    minutes, seconds = divmod(total, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
 
 
 def build_combined_markdown(
@@ -56,39 +62,29 @@ def build_combined_markdown(
         if matches and video.status == "completed":
             completed.append((video, matches[0]))
     lines = [
-        f"# Contenido de @{profile.rsplit('@', 1)[-1]}",
+        f"# Transcripciones de @{profile.rsplit('@', 1)[-1]}",
         "",
-        f"- Proyecto: `{project}`",
-        f"- Perfil: {profile}",
-        f"- Videos procesados: {len(completed)}",
-        f"- Actualizado: {datetime.now(UTC).isoformat()}",
-        "",
-        "## Índice",
+        f"> **{len(completed)} videos** · "
+        f"[Ver perfil original]({profile}) · "
+        f"Actualizado {datetime.now(UTC).date().isoformat()}",
         "",
     ]
-    for index, (video, _) in enumerate(completed, 1):
-        title = video.title.strip() or f"Video {video.id}"
-        lines.append(f"{index}. [{title}](#{index}-video-{video.id})")
-    lines.append("")
     for index, (video, source) in enumerate(completed, 1):
-        title = video.title.strip() or f"Video {video.id}"
+        title = video.title.strip() or "Sin título"
         lines.extend(
             [
-                f"## {index}. Video {video.id}",
+                "---",
                 "",
-                f"**Título:** {title}",
+                f"## {index:02d} — {title}",
                 "",
-                f"**Fuente:** {video.url}",
+                f"[Ver video original]({video.url}) · "
+                f"`{video.id}` · "
+                f"{_display_date(video.published_at)} · "
+                f"{_duration(video.duration)}",
                 "",
-                f"**Fecha:** {_display_date(video.published_at)}",
-                "",
-                f"**Duración:** {video.duration or 0} segundos",
-                "",
-                "### Transcripción",
+                "**Transcripción**",
                 "",
                 _transcript_body(source),
-                "",
-                "---",
                 "",
             ]
         )
@@ -109,7 +105,7 @@ def write_combined_markdown(
         ordered_videos=ordered_videos,
         source_dir=source_dir,
     )
-    if "### Transcripción" not in content:
+    if "**Transcripción**" not in content:
         raise CreatorSkillError("No completed transcripts are available to export")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(content, encoding="utf-8")

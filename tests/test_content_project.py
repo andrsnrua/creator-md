@@ -49,16 +49,17 @@ def test_extract_then_continue_builds_one_markdown_and_history(tmp_path):
     first = content.start("https://www.tiktok.com/@demo", 2)
     assert first["processed_this_run"] == 2
     markdown = content.combined_output.read_text()
-    assert markdown.count("## 1. Video") == 1
-    assert "Video 1001" in markdown
-    assert "Video 1002" in markdown
-    assert "Video 1003" not in markdown
+    assert "## 01 — Estructura de campañas" in markdown
+    assert "`1001`" in markdown
+    assert "`1002`" in markdown
+    assert "`1003`" not in markdown
+    assert "## Índice" not in markdown
     assert "### 00:" not in markdown
 
     second = content.continue_from_history(1)
     assert second["processed_this_run"] == 1
     markdown = content.combined_output.read_text()
-    assert "Video 1003" in markdown
+    assert "`1003`" in markdown
     history = json.loads(content.history_path.read_text())
     assert len(history["runs"]) == 2
     assert history["runs"][1]["selected_video_ids"] == ["1003"]
@@ -107,3 +108,58 @@ def test_continue_preserves_cursor_when_a_newer_video_appears(tmp_path):
     assert second["processed_this_run"] == 1
     history = json.loads(content.history_path.read_text())
     assert history["runs"][1]["selected_video_ids"] == ["1002"]
+
+
+def test_progress_reports_video_completion(tmp_path):
+    events = []
+    content = ContentProject(
+        tmp_path / "workspaces",
+        "progress-demo",
+        events.append,
+    )
+    videos = fixture_videos()
+
+    def discover(profile, output_path, max_videos=None):
+        selected = videos[:max_videos]
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(
+                {
+                    "profile": profile,
+                    "videos": [video.to_dict() for video in selected],
+                }
+            )
+        )
+        return selected
+
+    def process(selected, output_dir, on_output=None):
+        if on_output:
+            on_output("stdout", "Downloading audio with yt-dlp\n")
+            on_output("stdout", "Transcribing with local Whisper\n")
+        return [
+            transcript_from_json(FIXTURES / f"{video.id}.json", video)
+            for video in selected
+        ]
+
+    content.project.collector.discover = discover
+    content.project.summarizer.process = process
+    content.start("https://www.tiktok.com/@demo", 1)
+    assert events[-1]["percent"] == 100
+    assert any(event["stage"] == "completed_video" for event in events)
+    assert any("Transcribiendo con Whisper" in event["message"] for event in events)
+
+
+def test_retry_failed_video_can_recover(tmp_path):
+    content = ContentProject(tmp_path / "workspaces", "retry-demo")
+    install_fixture_adapters(content)
+    content.start("https://www.tiktok.com/@demo", 1)
+    video = fixture_videos()[0]
+    content.project.state.mark(video, "failed", error="TikTok temporal")
+
+    result = content.retry_failed(1)
+
+    assert result["processed_this_run"] == 1
+    assert result["failed_this_run"] == []
+    assert content.project.state.load()["videos"][video.id]["status"] == "completed"
+    history = json.loads(content.history_path.read_text())
+    assert history["runs"][-1]["action"] == "retry_failed"

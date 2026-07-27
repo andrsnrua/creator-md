@@ -57,6 +57,12 @@ Procesar los siguientes 10:
 creator-md continue --project creador --count 10
 ```
 
+Reintentar videos que TikTok bloqueó temporalmente:
+
+```bash
+creator-md retry --project creador --count 10
+```
+
 Consultar dónde quedó:
 
 ```bash

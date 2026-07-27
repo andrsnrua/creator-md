@@ -5,6 +5,7 @@ import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Callable
 
 from .content_export import append_history, write_combined_markdown
 from .errors import CreatorSkillError, ValidationError
@@ -15,9 +16,15 @@ from .video_runner import transcript_from_json
 
 
 class ContentProject:
-    def __init__(self, workspace_root: Path, name: str):
+    def __init__(
+        self,
+        workspace_root: Path,
+        name: str,
+        progress: Callable[[dict], None] | None = None,
+    ):
         self.project = CreatorProject(workspace_root, name)
         self.name = name
+        self.progress = progress
 
     @property
     def paths(self):
@@ -45,6 +52,79 @@ class ContentProject:
         self._validate_count(count)
         self.project.load_config()
         return self._run(count)
+
+    def retry_failed(self, count: int) -> dict:
+        self._validate_count(count)
+        self.project.load_config()
+        state = self.project.state.load()
+        order = state.get("video_order", list(state["videos"]))
+        selected = [
+            Video.from_dict(state["videos"][video_id])
+            for video_id in order
+            if state["videos"].get(video_id, {}).get("status") == "failed"
+        ][:count]
+        if not selected:
+            raise CreatorSkillError("No hay videos fallidos para reintentar.")
+        started_at = datetime.now(UTC).isoformat()
+        self._emit(
+            stage="selection",
+            message=f"Reintentando {len(selected)} videos fallidos",
+            percent=8,
+            total=len(selected),
+            processed=0,
+        )
+        self.project._process(
+            selected,
+            1,
+            None,
+            self._process_progress if self.progress else None,
+        )
+        final_state = self.project.state.load()
+        completed_ids = [
+            video.id
+            for video in selected
+            if final_state["videos"].get(video.id, {}).get("status") == "completed"
+        ]
+        failed_ids = [
+            video.id
+            for video in selected
+            if final_state["videos"].get(video.id, {}).get("status") == "failed"
+        ]
+        self._emit(
+            stage="export",
+            message="Reconstruyendo el Markdown final",
+            percent=94,
+        )
+        output = self.export()["output"]
+        append_history(
+            self.history_path,
+            {
+                "started_at": started_at,
+                "finished_at": datetime.now(UTC).isoformat(),
+                "action": "retry_failed",
+                "requested": count,
+                "selected_video_ids": [video.id for video in selected],
+                "completed_video_ids": completed_ids,
+                "failed_video_ids": failed_ids,
+            },
+        )
+        result = self.status()
+        result.update(
+            {
+                "requested": count,
+                "processed_this_run": len(completed_ids),
+                "failed_this_run": failed_ids,
+                "output": output,
+            }
+        )
+        self._emit(
+            stage="done",
+            message="Reintento terminado",
+            percent=100,
+            total=len(selected),
+            processed=len(selected),
+        )
+        return result
 
     def status(self) -> dict:
         config = self.project.load_config()
@@ -122,6 +202,11 @@ class ContentProject:
     def _run(self, count: int) -> dict:
         started_at = datetime.now(UTC).isoformat()
         config = self.project.load_config()
+        self._emit(
+            stage="discovery",
+            message="Buscando videos públicos del perfil",
+            percent=2,
+        )
         state_before = self.project.state.load()
         previous_order = list(state_before.get("video_order", []))
         discovery_limit = len(previous_order) + count
@@ -148,6 +233,12 @@ class ContentProject:
                 raise
             videos = self.project._cached_profile_videos(discovery_limit)
             discovery_warning = str(exc)
+            self._emit(
+                stage="discovery",
+                message="TikTok no respondió; usando el manifiesto guardado",
+                percent=5,
+                level="warning",
+            )
 
         processing_fingerprint = self._processing_fingerprint()
         state, _ = self.project.state.merge_discovery(
@@ -168,10 +259,14 @@ class ContentProject:
         self.project.state.save(state)
 
         selected: list[Video] = []
-        for video_id in order:
-            record = self.project.state.load()["videos"].get(video_id)
-            if record and record.get("status") != "completed":
-                selected.append(Video.from_dict(record))
+        records = self.project.state.load()["videos"]
+        for desired_status in ("pending", "failed"):
+            for video_id in order:
+                record = records.get(video_id)
+                if record and record.get("status") == desired_status:
+                    selected.append(Video.from_dict(record))
+                if len(selected) == count:
+                    break
             if len(selected) == count:
                 break
         if not selected:
@@ -179,19 +274,38 @@ class ContentProject:
                 "No quedan videos conocidos por procesar. Ejecuta continue más tarde "
                 "para buscar publicaciones nuevas o más antiguas."
             )
+        self._emit(
+            stage="selection",
+            message=f"{len(selected)} videos seleccionados para procesar",
+            percent=8,
+            total=len(selected),
+            processed=0,
+        )
 
         before_completed = {
             video_id
             for video_id, record in self.project.state.load()["videos"].items()
             if record.get("status") == "completed"
         }
-        self.project._process(selected, 1, None)
+        self.project._process(
+            selected,
+            1,
+            None,
+            self._process_progress if self.progress else None,
+        )
         state = self.project.state.load()
         ordered_videos = [
             Video.from_dict(state["videos"][video_id])
             for video_id in order
             if video_id in state["videos"]
         ]
+        self._emit(
+            stage="export",
+            message="Construyendo el Markdown final",
+            percent=94,
+            total=len(selected),
+            processed=len(selected),
+        )
         output = write_combined_markdown(
             self.combined_output,
             project=self.name,
@@ -235,7 +349,25 @@ class ContentProject:
                 "output": str(output),
             }
         )
+        self._emit(
+            stage="done",
+            message="Proceso terminado",
+            percent=100,
+            total=len(selected),
+            processed=len(selected),
+        )
         return result
+
+    def _process_progress(self, event: dict) -> None:
+        total = int(event.get("total") or 0)
+        processed = int(event.get("processed") or 0)
+        if total:
+            event["percent"] = min(92, 8 + round((processed / total) * 84))
+        self._emit(**event)
+
+    def _emit(self, **event) -> None:
+        if self.progress:
+            self.progress(event)
 
     @staticmethod
     def _validate_count(count: int) -> None:

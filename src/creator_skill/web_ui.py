@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import threading
 import uuid
+from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -43,6 +44,12 @@ HTML = r"""<!doctype html>
     .stat{background:#0d1119;border:1px solid var(--line);border-radius:12px;padding:14px}
     .stat b{display:block;font-size:25px}.stat span{color:var(--muted);font-size:12px}
     #message{min-height:26px;color:var(--muted)} .error{color:var(--danger)!important}
+    .progress{height:14px;background:#090b10;border:1px solid var(--line);
+      border-radius:999px;overflow:hidden;margin:18px 0 8px}
+    #bar{height:100%;width:0;background:linear-gradient(90deg,#43d9a5,#7cf0c5);
+      transition:width .35s ease}
+    #progressText{color:var(--muted);font-variant-numeric:tabular-nums}
+    #liveLog{min-height:170px;max-height:320px;color:#b8f5dd}
     pre{white-space:pre-wrap;word-break:break-word;background:#090b10;
       border:1px solid var(--line);border-radius:14px;padding:20px;
       max-height:560px;overflow:auto;color:#d9deea}
@@ -67,8 +74,11 @@ HTML = r"""<!doctype html>
       <div class="actions">
         <button id="extract" onclick="startJob('extract')">Extraer videos</button>
         <button class="secondary" id="continue" onclick="startJob('continue')">Continuar</button>
+        <button class="secondary" id="retry" onclick="startJob('retry')">Reintentar fallidos</button>
         <button class="secondary" onclick="loadStatus()">Ver estado</button>
       </div>
+      <div class="progress"><div id="bar"></div></div>
+      <div id="progressText">0 % · En espera</div>
       <p id="message">Listo para trabajar sin API.</p>
     </section>
     <section class="card">
@@ -82,6 +92,10 @@ HTML = r"""<!doctype html>
       <p><b>Archivo:</b> <a id="download" href="#" target="_blank">Markdown acumulado</a></p>
     </section>
     <section class="card wide">
+      <h2>Actividad en tiempo real</h2>
+      <pre id="liveLog">Todavía no hay una tarea activa.</pre>
+    </section>
+    <section class="card wide">
       <h2>Contenido generado</h2>
       <pre id="preview">Pulsa “Ver estado” para cargar el Markdown existente.</pre>
     </section>
@@ -90,7 +104,7 @@ HTML = r"""<!doctype html>
 const $=id=>document.getElementById(id);
 function values(){return {profile:$('profile').value.trim(),
   project:$('project').value.trim(),count:Number($('count').value)}}
-function busy(on){$('extract').disabled=on;$('continue').disabled=on}
+function busy(on){$('extract').disabled=on;$('continue').disabled=on;$('retry').disabled=on}
 function message(text,error=false){$('message').textContent=text;
   $('message').className=error?'error':''}
 async function request(url,options){const r=await fetch(url,options);
@@ -103,11 +117,24 @@ async function startJob(action){
 }
 async function poll(id){
   try{const job=await request('/api/job?id='+encodeURIComponent(id));
-    if(job.status==='running'){setTimeout(()=>poll(id),1500);return}
+    renderJob(job);
+    if(job.status==='running'){setTimeout(()=>poll(id),900);return}
     busy(false);if(job.status==='failed'){message(job.error,true);return}
-    message('Listo: '+job.result.processed_this_run+' videos procesados.');
+    const failed=(job.result.failed_this_run||[]).length;
+    message(failed
+      ?`Finalizado: ${job.result.processed_this_run} completados y ${failed} fallidos.`
+      :`Listo: ${job.result.processed_this_run} videos procesados.`,failed>0);
     render(job.result);loadPreview()
   }catch(e){busy(false);message(e.message,true)}
+}
+function renderJob(job){
+  $('bar').style.width=(job.percent||0)+'%';
+  const count=job.total?` · ${job.processed||0}/${job.total} videos`:'';
+  $('progressText').textContent=`${job.percent||0} %${count} · ${job.stage||'iniciando'}`;
+  if(job.logs&&job.logs.length){
+    $('liveLog').textContent=job.logs.map(x=>`[${x.time}] ${x.message}`).join('\n');
+    $('liveLog').scrollTop=$('liveLog').scrollHeight;
+  }
 }
 async function loadStatus(){
   message('Consultando estado…');
@@ -136,7 +163,21 @@ class JobStore:
     def start(self, action: str, payload: dict) -> str:
         job_id = uuid.uuid4().hex
         with self.lock:
-            self.jobs[job_id] = {"status": "running"}
+            self.jobs[job_id] = {
+                "status": "running",
+                "stage": "queued",
+                "percent": 0,
+                "processed": 0,
+                "total": 0,
+                "current_video": None,
+                "logs": [
+                    {
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "message": "Tarea añadida a la cola",
+                        "level": "info",
+                    }
+                ],
+            }
         threading.Thread(
             target=self._run,
             args=(job_id, action, payload),
@@ -148,20 +189,91 @@ class JobStore:
         try:
             project = str(payload.get("project", "")).strip()
             count = int(payload.get("count", 0))
-            content = ContentProject(self.workspace_root, project)
+            content = ContentProject(
+                self.workspace_root,
+                project,
+                lambda event: self.update(job_id, event),
+            )
             if action == "extract":
                 result = content.start(str(payload.get("profile", "")), count)
+            elif action == "retry":
+                result = content.retry_failed(count)
             else:
                 result = content.continue_from_history(count)
-            record = {"status": "completed", "result": result}
-        except (CreatorSkillError, OSError, TypeError, ValueError) as exc:
-            record = {"status": "failed", "error": str(exc)}
+            self.update(
+                job_id,
+                {
+                    "status": "completed",
+                    "stage": "completed",
+                    "percent": 100,
+                    "result": result,
+                },
+            )
+        except Exception as exc:
+            self.update(
+                job_id,
+                {
+                    "status": "failed",
+                    "stage": "failed",
+                    "error": str(exc),
+                    "message": f"Proceso detenido: {exc}",
+                    "level": "error",
+                },
+            )
+
+    def update(self, job_id: str, event: dict) -> None:
         with self.lock:
-            self.jobs[job_id] = record
+            job = self.jobs[job_id]
+            message = str(event.get("message") or "").strip()
+            if "percent" not in event and event.get("stage") == "engine":
+                fractions = (
+                    ("Descargando", 0.12),
+                    ("Probando formato", 0.24),
+                    ("Preparando", 0.32),
+                    ("Formato alternativo listo", 0.42),
+                    ("Cargando", 0.52),
+                    ("Transcribiendo", 0.66),
+                    ("Transcripción terminada", 0.90),
+                )
+                fraction = next(
+                    (value for token, value in fractions if token in message),
+                    0.05,
+                )
+                total = int(job.get("total") or 0)
+                processed = int(job.get("processed") or 0)
+                if total:
+                    event["percent"] = min(
+                        92,
+                        8 + round(((processed + fraction) / total) * 84),
+                    )
+            for key in (
+                "status",
+                "stage",
+                "percent",
+                "processed",
+                "total",
+                "current_video",
+                "result",
+                "error",
+            ):
+                if key in event:
+                    job[key] = event[key]
+            if message:
+                previous = job["logs"][-1]["message"] if job["logs"] else ""
+                if message != previous:
+                    job["logs"].append(
+                        {
+                            "time": datetime.now().strftime("%H:%M:%S"),
+                            "message": message,
+                            "level": event.get("level", "info"),
+                        }
+                    )
+                    job["logs"] = job["logs"][-300:]
 
     def get(self, job_id: str) -> dict | None:
         with self.lock:
-            return self.jobs.get(job_id)
+            job = self.jobs.get(job_id)
+            return json.loads(json.dumps(job)) if job else None
 
 
 def make_handler(workspace_root: Path) -> type[BaseHTTPRequestHandler]:
@@ -222,7 +334,7 @@ def make_handler(workspace_root: Path) -> type[BaseHTTPRequestHandler]:
         def do_POST(self) -> None:
             request = urlsplit(self.path)
             action = request.path.removeprefix("/api/")
-            if action not in {"extract", "continue"}:
+            if action not in {"extract", "continue", "retry"}:
                 self._json({"error": "Ruta no encontrada"}, HTTPStatus.NOT_FOUND)
                 return
             try:

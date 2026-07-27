@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import threading
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 from .errors import ExternalCommandError
 
@@ -32,29 +33,79 @@ class CommandRunner:
         input_text: str | None = None,
         capture_output: bool = True,
         check: bool = True,
+        on_output: Callable[[str, str], None] | None = None,
     ) -> CommandResult:
         command = [str(arg) for arg in args]
         merged_env = os.environ.copy()
         if env:
             merged_env.update(env)
-        completed = subprocess.run(
-            command,
-            cwd=cwd,
-            env=merged_env,
-            text=True,
-            capture_output=capture_output,
-            input=input_text,
-            check=False,
-        )
-        result = CommandResult(
-            command,
-            completed.returncode,
-            completed.stdout or "",
-            completed.stderr or "",
-        )
+        if on_output is None:
+            completed = subprocess.run(
+                command,
+                cwd=cwd,
+                env=merged_env,
+                text=True,
+                capture_output=capture_output,
+                input=input_text,
+                check=False,
+            )
+            result = CommandResult(
+                command,
+                completed.returncode,
+                completed.stdout or "",
+                completed.stderr or "",
+            )
+        else:
+            process = subprocess.Popen(
+                command,
+                cwd=cwd,
+                env=merged_env,
+                text=True,
+                stdin=subprocess.PIPE if input_text is not None else None,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                bufsize=1,
+            )
+            stdout: list[str] = []
+            stderr: list[str] = []
+
+            def consume(stream, name: str, destination: list[str]) -> None:
+                if stream is None:
+                    return
+                for line in iter(stream.readline, ""):
+                    destination.append(line)
+                    on_output(name, line)
+                stream.close()
+
+            readers = [
+                threading.Thread(
+                    target=consume,
+                    args=(process.stdout, "stdout", stdout),
+                ),
+                threading.Thread(
+                    target=consume,
+                    args=(process.stderr, "stderr", stderr),
+                ),
+            ]
+            for reader in readers:
+                reader.start()
+            if input_text is not None and process.stdin is not None:
+                process.stdin.write(input_text)
+                process.stdin.close()
+            returncode = process.wait()
+            for reader in readers:
+                reader.join()
+            result = CommandResult(
+                command,
+                returncode,
+                "".join(stdout),
+                "".join(stderr),
+            )
         self._audit(result, cwd)
         if check and result.returncode:
-            detail = result.stderr.strip() or result.stdout.strip() or "no output"
+            detail = "\n".join(
+                part for part in (result.stdout.strip(), result.stderr.strip()) if part
+            ) or "no output"
             raise ExternalCommandError(
                 f"Command failed ({result.returncode}): {' '.join(command)}\n{detail}"
             )
