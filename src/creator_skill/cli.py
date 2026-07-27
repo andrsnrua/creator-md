@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 
+from .content_project import ContentProject
 from .errors import CreatorSkillError
 from .project import CreatorProject, doctor_data
 
@@ -15,8 +16,8 @@ def _common(subparser: argparse.ArgumentParser) -> None:
 
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
-        prog="creator-skill",
-        description="Orchestrate creator videos into portable Agent Skills.",
+        prog="creator-md",
+        description="Extract resumable creator video transcripts into one Markdown file.",
     )
     commands = root.add_subparsers(dest="command", required=True)
     doctor = commands.add_parser("doctor")
@@ -28,25 +29,24 @@ def parser() -> argparse.ArgumentParser:
     discover.add_argument("--project", default="discovery")
     discover.add_argument("--max-videos", type=int)
 
-    build = commands.add_parser("build")
-    _common(build)
-    build.add_argument("--profile", required=True)
-    build.add_argument("--name", required=True)
-    build.add_argument("--intent", required=True)
-    build.add_argument("--max-videos", type=int)
-    build.add_argument("--batch-size", type=int, default=10)
-    build.add_argument("--fixture-dir", type=Path)
+    extract = commands.add_parser("extract")
+    _common(extract)
+    extract.add_argument("--profile", required=True)
+    extract.add_argument("--project", required=True)
+    extract.add_argument("--count", required=True, type=int)
 
-    for name in ("resume", "update"):
-        command = commands.add_parser(name)
-        _common(command)
-        command.add_argument("--project", required=True)
-        command.add_argument("--fixture-dir", type=Path)
+    continuation = commands.add_parser("continue")
+    _common(continuation)
+    continuation.add_argument("--project", required=True)
+    continuation.add_argument("--count", required=True, type=int)
 
-    for name in ("validate", "eval", "export", "status"):
-        command = commands.add_parser(name)
-        _common(command)
-        command.add_argument("--project", required=True)
+    status = commands.add_parser("status")
+    _common(status)
+    status.add_argument("--project", required=True)
+
+    export = commands.add_parser("export")
+    _common(export)
+    export.add_argument("--project", required=True)
     return root
 
 
@@ -59,36 +59,26 @@ def run(args: argparse.Namespace) -> int:
         data = doctor_data()
         _print(data)
         return 0 if all(item["available"] for item in data.values()) else 1
-    project_name = getattr(args, "project", None) or getattr(args, "name", None)
-    project = CreatorProject(args.workspace_root, project_name)
     if args.command == "discover":
+        project = CreatorProject(args.workspace_root, args.project)
         videos = project.discover(args.profile, args.max_videos)
         _print({"count": len(videos), "profile_json": str(project.paths.profile)})
-    elif args.command == "build":
+    elif args.command == "extract":
         _print(
-            project.build(
-                args.profile,
-                args.intent,
-                args.max_videos,
-                args.batch_size,
-                args.fixture_dir,
+            ContentProject(args.workspace_root, args.project).start(
+                args.profile, args.count
             )
         )
-    elif args.command == "resume":
-        _print(project.resume(args.fixture_dir))
-    elif args.command == "update":
-        _print(project.update(args.fixture_dir))
+    elif args.command == "continue":
+        _print(
+            ContentProject(args.workspace_root, args.project).continue_from_history(
+                args.count
+            )
+        )
     elif args.command == "status":
-        _print(project.state.load())
-    elif args.command == "validate":
-        config = project.load_config()
-        skill_dir = project.paths.kb / "output" / "skills" / project.name
-        _print(project.pipeline.validate(project.paths.kb, project.name, skill_dir))
-    elif args.command == "eval":
-        _print(project.pipeline.evaluate(project.paths.kb, project.name))
+        _print(ContentProject(args.workspace_root, args.project).status())
     elif args.command == "export":
-        skill_dir = project.paths.kb / "output" / "skills" / project.name
-        _print(project.pipeline.export(skill_dir, project.paths.exports))
+        _print(ContentProject(args.workspace_root, args.project).export())
     return 0
 
 
@@ -102,4 +92,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

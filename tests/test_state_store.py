@@ -29,3 +29,19 @@ def test_failed_video_is_retried(tmp_path):
     _, pending = store.merge_discovery([video])
     assert pending[0].status == "failed"
 
+
+def test_pending_video_is_resumed(tmp_path):
+    store = StateStore(tmp_path / "state.json")
+    video = Video("1", "https://x/1")
+    store.merge_discovery([video])
+    _, pending = store.merge_discovery([video])
+    assert [item.id for item in pending] == ["1"]
+
+
+def test_processing_configuration_change_requeues_video(tmp_path):
+    store = StateStore(tmp_path / "state.json")
+    video = Video("1", "https://x/1")
+    store.merge_discovery([video], "tiny-auto")
+    store.mark(video, "completed", source_hash="abc")
+    _, pending = store.merge_discovery([video], "base-es")
+    assert [item.id for item in pending] == ["1"]

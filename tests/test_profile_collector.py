@@ -63,7 +63,16 @@ def test_parse_ytdlp_deduplicates_and_normalizes_entries():
     videos = parse_ytdlp_profile(payload, "https://www.tiktok.com/@demo")
     assert [video.id for video in videos] == ["1", "2"]
     assert videos[0].url.endswith("/@demo/video/1")
+    assert videos[0].published_at == "2026-07-01"
     assert videos[1].title == "two"
+
+
+def test_parse_profile_timestamp_as_iso_date():
+    videos = parse_ytdlp_profile(
+        {"entries": [{"id": "7", "timestamp": 1_787_889_600}]},
+        "https://www.tiktok.com/@demo",
+    )
+    assert videos[0].published_at == "2026-08-28"
 
 
 def test_parse_alternative_videos_key():
@@ -71,4 +80,3 @@ def test_parse_alternative_videos_key():
         {"videos": [{"id": "7"}]}, "https://www.tiktok.com/@demo"
     )
     assert videos[0].id == "7"
-

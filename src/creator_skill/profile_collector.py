@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -37,6 +38,22 @@ def _video_id(entry: dict) -> str | None:
     return match.group(1) if match else None
 
 
+def _published_at(entry: dict) -> str | None:
+    upload_date = entry.get("upload_date")
+    if upload_date:
+        raw = str(upload_date)
+        if re.fullmatch(r"\d{8}", raw):
+            return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
+        return raw
+    timestamp = entry.get("timestamp")
+    if timestamp is not None:
+        try:
+            return datetime.fromtimestamp(float(timestamp), UTC).date().isoformat()
+        except (OSError, OverflowError, TypeError, ValueError):
+            return str(timestamp)
+    return None
+
+
 def parse_ytdlp_profile(payload: str | dict, profile_url: str) -> list[Video]:
     data = json.loads(payload) if isinstance(payload, str) else payload
     creator = str(
@@ -56,13 +73,12 @@ def parse_ytdlp_profile(payload: str | dict, profile_url: str) -> list[Video]:
         url = entry.get("webpage_url")
         if not url or not str(url).startswith("http"):
             url = f"https://www.tiktok.com/@{creator}/video/{video_id}"
-        upload_date = entry.get("upload_date") or entry.get("timestamp")
         videos.append(
             Video(
                 id=video_id,
                 url=str(url),
                 title=str(entry.get("title") or entry.get("description") or ""),
-                published_at=str(upload_date) if upload_date else None,
+                published_at=_published_at(entry),
                 duration=float(entry["duration"]) if entry.get("duration") else None,
                 creator=creator,
             )
@@ -79,8 +95,16 @@ class TikTokProfileCollector:
         self, profile: str, output_path: Path, max_videos: int | None = None
     ) -> list[Video]:
         profile_url = normalize_profile_url(profile)
+        command = [
+            self.executable,
+            "--flat-playlist",
+            "--dump-single-json",
+        ]
+        if max_videos is not None:
+            command.extend(["--playlist-end", str(max_videos)])
+        command.append(profile_url)
         result = self.runner.run(
-            [self.executable, "--flat-playlist", "--dump-single-json", profile_url]
+            command
         )
         videos = parse_ytdlp_profile(result.stdout, profile_url)
         if max_videos is not None:
@@ -100,4 +124,3 @@ class TikTokProfileCollector:
             encoding="utf-8",
         )
         return videos
-

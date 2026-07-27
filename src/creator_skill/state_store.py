@@ -18,11 +18,8 @@ class StateStore:
         if not self.path.exists():
             return {
                 "schema_version": 1,
-                "skill_version": 0,
                 "videos": {},
                 "dependencies": {},
-                "validations": {},
-                "evaluations": {},
             }
         return json.loads(self.path.read_text(encoding="utf-8"))
 
@@ -41,23 +38,37 @@ class StateStore:
             if os.path.exists(tmp_name):
                 os.unlink(tmp_name)
 
-    def merge_discovery(self, videos: Iterable[Video]) -> tuple[dict, list[Video]]:
+    def merge_discovery(
+        self, videos: Iterable[Video], processing_fingerprint: str | None = None
+    ) -> tuple[dict, list[Video]]:
         state = self.load()
         new_or_changed: list[Video] = []
         for video in videos:
             current = state["videos"].get(video.id)
             fingerprint = f"{video.url}|{video.title}|{video.duration}|{video.published_at}"
-            if not current or current.get("fingerprint") != fingerprint:
+            if (
+                not current
+                or current.get("fingerprint") != fingerprint
+                or (
+                    processing_fingerprint is not None
+                    and current.get("processing_fingerprint")
+                    != processing_fingerprint
+                )
+            ):
                 video.status = "pending"
                 new_or_changed.append(video)
             elif current.get("status") == "failed":
                 video.status = "failed"
+                new_or_changed.append(video)
+            elif current.get("status") == "pending":
+                video.status = "pending"
                 new_or_changed.append(video)
             else:
                 video.status = current.get("status", "pending")
                 video.source_hash = current.get("source_hash")
             record = video.to_dict()
             record["fingerprint"] = fingerprint
+            record["processing_fingerprint"] = processing_fingerprint
             state["videos"][video.id] = record
         self.save(state)
         return state, new_or_changed
@@ -74,4 +85,3 @@ class StateStore:
         record = state["videos"].setdefault(video.id, video.to_dict())
         record.update(status=status, source_hash=source_hash, error=error)
         self.save(state)
-

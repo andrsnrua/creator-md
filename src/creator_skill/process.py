@@ -29,6 +29,8 @@ class CommandRunner:
         *,
         cwd: Path | None = None,
         env: Mapping[str, str] | None = None,
+        input_text: str | None = None,
+        capture_output: bool = True,
         check: bool = True,
     ) -> CommandResult:
         command = [str(arg) for arg in args]
@@ -40,11 +42,15 @@ class CommandRunner:
             cwd=cwd,
             env=merged_env,
             text=True,
-            capture_output=True,
+            capture_output=capture_output,
+            input=input_text,
             check=False,
         )
         result = CommandResult(
-            command, completed.returncode, completed.stdout, completed.stderr
+            command,
+            completed.returncode,
+            completed.stdout or "",
+            completed.stderr or "",
         )
         self._audit(result, cwd)
         if check and result.returncode:
@@ -58,14 +64,20 @@ class CommandRunner:
         if not self.audit_path:
             return
         self.audit_path.parent.mkdir(parents=True, exist_ok=True)
+        safe_args = list(result.args)
+        secret_flags = {"--api-key", "--token", "--password"}
+        for index, value in enumerate(safe_args):
+            if index and safe_args[index - 1] in secret_flags:
+                safe_args[index] = "***REDACTED***"
+            elif any(value.startswith(flag + "=") for flag in secret_flags):
+                safe_args[index] = value.split("=", 1)[0] + "=***REDACTED***"
         record = {
             "timestamp": datetime.now(UTC).isoformat(),
             "cwd": str(cwd) if cwd else None,
-            "args": result.args,
+            "args": safe_args,
             "returncode": result.returncode,
             "stdout_tail": result.stdout[-2000:],
             "stderr_tail": result.stderr[-2000:],
         }
         with self.audit_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-
