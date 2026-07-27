@@ -26,6 +26,13 @@ def _slug(value: str) -> str:
 
 def build_markdown(transcript: Transcript) -> str:
     video = transcript.video
+    paragraph = " ".join(
+        " ".join(segment.text.split())
+        for segment in transcript.segments
+        if segment.text.strip()
+    ).strip()
+    if not paragraph and transcript.raw_text:
+        paragraph = " ".join(transcript.raw_text.split())
     lines = [
         "---",
         f"video_id: {_yaml_string(video.id)}",
@@ -40,18 +47,11 @@ def build_markdown(transcript: Transcript) -> str:
         "",
         "## Transcripción",
         "",
+        paragraph,
+        "",
+        f"Fuente: [Video {video.id}]({video.url})",
+        "",
     ]
-    for segment in transcript.segments:
-        lines.extend(
-            [
-                f"### {_timestamp(segment.start)}–{_timestamp(segment.end)}",
-                "",
-                segment.text,
-                "",
-                f"Fuente: [{video.id} @ {_timestamp(segment.start)}]({video.url})",
-                "",
-            ]
-        )
     if transcript.visual_notes:
         lines.extend(["## Información visual", ""])
         for note in transcript.visual_notes:
@@ -86,4 +86,3 @@ def write_source(transcript: Transcript, source_dir: Path) -> tuple[Path, str]:
     path = source_dir / filename
     path.write_text(content, encoding="utf-8")
     return path, digest
-

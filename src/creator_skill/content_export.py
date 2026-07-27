@@ -25,10 +25,22 @@ def _transcript_body(source: Path) -> str:
     text = source.read_text(encoding="utf-8")
     marker = "## Transcripción\n"
     if marker not in text:
-        return text
+        return " ".join(text.split())
     body = text.split(marker, 1)[1]
+    body = body.split("## Información visual", 1)[0]
     body = body.split("## Nota de atribución", 1)[0]
-    return body.strip()
+    content: list[str] = []
+    source_line = ""
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("### "):
+            continue
+        if stripped.startswith("Fuente:"):
+            source_line = stripped
+            continue
+        content.append(stripped)
+    paragraph = " ".join(content)
+    return f"{paragraph}\n\n{source_line}".strip()
 
 
 def build_combined_markdown(

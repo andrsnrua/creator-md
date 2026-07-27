@@ -110,7 +110,9 @@ def test_markdown_preserves_citations_visual_notes_and_hash(tmp_path):
     )
     markdown = build_markdown(transcript)
     assert 'video_id: "123"' in markdown
-    assert "00:18–01:01" in markdown
+    assert "First claim Second claim" in markdown
+    assert "### 00:00–00:18" not in markdown
+    assert "[Video 123]" in markdown
     assert "[123 @ 00:28]" in markdown
     path, digest = write_source(transcript, tmp_path)
     assert path.name.startswith("123-a-quoted-title")

@@ -53,6 +53,7 @@ def test_extract_then_continue_builds_one_markdown_and_history(tmp_path):
     assert "Video 1001" in markdown
     assert "Video 1002" in markdown
     assert "Video 1003" not in markdown
+    assert "### 00:" not in markdown
 
     second = content.continue_from_history(1)
     assert second["processed_this_run"] == 1

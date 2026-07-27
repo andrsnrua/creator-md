@@ -204,6 +204,7 @@ def make_handler(workspace_root: Path) -> type[BaseHTTPRequestHandler]:
                     self._json(project.status())
                     return
                 if request.path == "/markdown":
+                    project.export()
                     output = project.combined_output
                     if not output.exists():
                         raise CreatorSkillError("Todavía no existe el Markdown")
