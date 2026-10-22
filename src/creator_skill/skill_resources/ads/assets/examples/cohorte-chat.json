@@ -1,0 +1,11 @@
+{
+  "currency": "PEN",
+  "period": "Ejemplo ficticio: cohorte de entrada de septiembre, observada hasta el 15 de octubre",
+  "same_cohort": true,
+  "cohort_mature": true,
+  "spend": 600,
+  "conversations": 100,
+  "sales": 10,
+  "net_revenue": 1000,
+  "variable_costs": 400
+}

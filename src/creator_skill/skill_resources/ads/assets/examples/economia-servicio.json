@@ -1,0 +1,10 @@
+{
+  "currency": "PEN",
+  "basis": "hypothesis",
+  "net_revenue_per_new_customer": 1000,
+  "variable_cost_per_new_customer": 400,
+  "reserve_per_new_customer": 200,
+  "non_ad_acquisition_cost_per_new_customer": 50,
+  "lead_to_customer_rate": 0.1,
+  "lead_handling_cost": 5
+}

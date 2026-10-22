@@ -6,6 +6,8 @@ from pathlib import Path
 
 from .errors import CreatorSkillError
 from .models import Video
+from .storage import atomic_text, atomic_json
+from .knowledge_adapter import source_filename
 
 
 def _display_date(value: str | None) -> str:
@@ -55,10 +57,12 @@ def build_combined_markdown(
     profile: str,
     ordered_videos: list[Video],
     source_dir: Path,
+    freshness: dict | None = None,
 ) -> str:
     completed: list[tuple[Video, Path]] = []
     for video in ordered_videos:
-        matches = sorted(source_dir.glob(f"{video.id}-*.md"))
+        current = source_dir / source_filename(video)
+        matches = [current] if current.exists() else sorted(source_dir.glob(f"{video.id}-*.md"))
         if matches and video.status == "completed":
             completed.append((video, matches[0]))
     lines = [
@@ -66,7 +70,11 @@ def build_combined_markdown(
         "",
         f"> **{len(completed)} videos** · "
         f"[Ver perfil original]({profile}) · "
-        f"Actualizado {datetime.now(UTC).date().isoformat()}",
+        f"Documento generado {datetime.now(UTC).date().isoformat()}",
+        "",
+        f"Última consulta de la fuente: {(freshness or {}).get('last_checked_at') or 'sin comprobación registrada'}.",
+        f"Cobertura: {(freshness or {}).get('coverage', {}).get('status', 'desconocida')}. "
+        "La fecha de generación no acredita la vigencia del contenido.",
         "",
     ]
     for index, (video, source) in enumerate(completed, 1):
@@ -98,17 +106,19 @@ def write_combined_markdown(
     profile: str,
     ordered_videos: list[Video],
     source_dir: Path,
+    freshness: dict | None = None,
 ) -> Path:
     content = build_combined_markdown(
         project=project,
         profile=profile,
         ordered_videos=ordered_videos,
         source_dir=source_dir,
+        freshness=freshness,
     )
     if "**Transcripción**" not in content:
         raise CreatorSkillError("No completed transcripts are available to export")
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(content, encoding="utf-8")
+    atomic_text(output, content)
     return output
 
 
@@ -118,4 +128,4 @@ def append_history(path: Path, record: dict) -> None:
         data = json.loads(path.read_text(encoding="utf-8"))
     data.setdefault("runs", []).append(record)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    atomic_json(path, data)

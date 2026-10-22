@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+import shutil
 import subprocess
 import threading
 from dataclasses import asdict, dataclass
@@ -34,9 +36,21 @@ class CommandRunner:
         capture_output: bool = True,
         check: bool = True,
         on_output: Callable[[str, str], None] | None = None,
+        timeout: float | None = None,
     ) -> CommandResult:
         command = [str(arg) for arg in args]
+        if command[0] == "yt-dlp":
+            node = shutil.which("node")
+            bundled_node = Path(sys.executable).parent.parent / "node" / "bin" / "node.exe"
+            if not node and bundled_node.exists():
+                node = str(bundled_node)
+            if node:
+                command += ["--js-runtimes", "node:" + node]
+        if command[0] == "yt-dlp" and ((Path(__file__).resolve().parents[2] / ".venv/runtime-packages/yt_dlp").exists() or not shutil.which("yt-dlp")):
+            entrypoint = Path(__file__).resolve().parents[2] / "run.py"
+            command = [sys.executable, str(entrypoint), "ytdlp", *command[1:]]
         merged_env = os.environ.copy()
+        merged_env.setdefault("PYTHONIOENCODING", "utf-8")
         if env:
             merged_env.update(env)
         if on_output is None:
@@ -45,9 +59,11 @@ class CommandRunner:
                 cwd=cwd,
                 env=merged_env,
                 text=True,
+                encoding="utf-8", errors="replace",
                 capture_output=capture_output,
                 input=input_text,
                 check=False,
+                timeout=timeout,
             )
             result = CommandResult(
                 command,
@@ -61,6 +77,7 @@ class CommandRunner:
                 cwd=cwd,
                 env=merged_env,
                 text=True,
+                encoding="utf-8", errors="replace",
                 stdin=subprocess.PIPE if input_text is not None else None,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -92,7 +109,14 @@ class CommandRunner:
             if input_text is not None and process.stdin is not None:
                 process.stdin.write(input_text)
                 process.stdin.close()
-            returncode = process.wait()
+            try:
+                returncode = process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+                for reader in readers:
+                    reader.join(timeout=2)
+                raise
             for reader in readers:
                 reader.join()
             result = CommandResult(

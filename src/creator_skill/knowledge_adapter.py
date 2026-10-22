@@ -5,7 +5,8 @@ import json
 import re
 from pathlib import Path
 
-from .models import Transcript
+from .models import Transcript, Video
+from .storage import atomic_text
 
 
 def _yaml_string(value: str) -> str:
@@ -45,7 +46,7 @@ def build_markdown(transcript: Transcript) -> str:
         "",
         f"# {video.title or f'Video {video.id}'}",
         "",
-        "## Transcripción",
+        "## Texto visual" if transcript.method in {"visual_ocr", "visual_review"} else "## Transcripción",
         "",
         paragraph,
         "",
@@ -78,11 +79,15 @@ def build_markdown(transcript: Transcript) -> str:
     return "\n".join(lines)
 
 
+def source_filename(video: Video) -> str:
+    return f"{video.id}-{_slug(video.title)}.md"
+
+
 def write_source(transcript: Transcript, source_dir: Path) -> tuple[Path, str]:
     source_dir.mkdir(parents=True, exist_ok=True)
     content = build_markdown(transcript)
     digest = hashlib.sha256(content.encode()).hexdigest()
-    filename = f"{transcript.video.id}-{_slug(transcript.video.title)}.md"
+    filename = source_filename(transcript.video)
     path = source_dir / filename
-    path.write_text(content, encoding="utf-8")
+    atomic_text(path, content)
     return path, digest

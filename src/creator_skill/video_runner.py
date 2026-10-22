@@ -7,11 +7,18 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from dataclasses import asdict
+from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Iterable, Iterator
+from urllib.parse import urlsplit
 
 from .errors import CreatorSkillError
+from .fast_transcriber import available as fast_whisper_available
+from .fast_transcriber import transcribe_detailed as fast_whisper_transcribe
 from .models import Segment, Transcript, Video
 from .process import CommandRunner
+from .storage import atomic_json
 
 TIMESTAMP_RE = re.compile(
     r"^(?P<hours>\d{2}):(?P<minutes>\d{2}):(?P<seconds>\d{2})\s+(?P<text>.+)$"
@@ -40,6 +47,7 @@ def transcript_from_json(path: Path, video: Video | None = None) -> Transcript:
         segments=segments,
         visual_notes=list(data.get("visual_notes", [])),
         raw_text=raw,
+        method=str(data.get("method") or "automatic"),
     )
 
 
@@ -79,6 +87,43 @@ class SummarizeAdapter:
     def __init__(self, runner: CommandRunner, executable: str = "summarizer"):
         self.runner = runner
         self.executable = executable
+        self.model = os.environ.get("CREATOR_MD_WHISPER_MODEL", "base")
+        self._caption_futures = {}
+        self._caption_results = {}
+
+    def _visual_context(self, payload, video, output_dir, on_output=None):
+        from .quality import VISUAL
+        from .skill_search import folded
+        text = " ".join(s["text"] for s in payload.get("segments", []))
+        if os.environ.get("CREATOR_MD_VISUAL_CONTEXT", "auto").lower() in {"0", "false", "no"} or not VISUAL.search(folded(text)):
+            return payload
+        try:
+            from .visual import extract_visual
+            visual = extract_visual(video, output_dir / ".cache", self.runner)
+            payload["visual_notes"] = visual["segments"]
+            payload["visual_coverage"] = visual["visual_coverage"]
+        except Exception as exc:
+            payload["visual_error"] = f"{type(exc).__name__}: {str(exc)[-350:]}"
+            if on_output:
+                on_output("stderr", "Contexto de pantalla pendiente; se conserva la transcripción de voz.\n")
+        return payload
+
+    @contextmanager
+    def prefetch(self, videos, output_dir):
+        """Fetch two caption tracks concurrently; state and ASR stay serialized."""
+        from .media import youtube_captions
+        youtube = [v for v in videos if "youtube.com" in v.url or "youtu.be/" in v.url]
+        if not youtube or not fast_whisper_available():
+            yield
+            return
+        pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="captions")
+        self._caption_results = {}
+        self._caption_futures = {v.id: pool.submit(youtube_captions, v, output_dir / ".cache", self.runner) for v in youtube}
+        try:
+            yield
+        finally:
+            pool.shutdown(wait=True, cancel_futures=True)
+            self._caption_futures = {}
 
     def process(
         self,
@@ -91,8 +136,74 @@ class SummarizeAdapter:
             "true",
             "yes",
         }:
+            fast_enabled = os.environ.get(
+                "CREATOR_MD_FAST_WHISPER", "true"
+            ).lower() not in {"0", "false", "no"}
+            if fast_enabled and fast_whisper_available():
+                return self._process_fast_whisper(videos, output_dir, on_output)
             return self._process_transcript_only(videos, output_dir, on_output)
         return self._process_with_summary_cli(videos, output_dir)
+
+    def _process_fast_whisper(
+        self,
+        videos: list[Video],
+        output_dir: Path,
+        on_output: Callable[[str, str], None] | None = None,
+    ) -> list[Transcript]:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        model = self.model
+        language = os.environ.get(
+            "CREATOR_MD_LANGUAGE",
+            os.environ.get("CREATOR_SKILL_LANGUAGE", "es"),
+        )
+        transcripts: list[Transcript] = []
+        for video in videos:
+            source = video.media_url or video.url
+            from .media import prepare_audio, youtube_captions
+            result_path = output_dir / f"{video.id}.json"
+            if video.media_type == "images" and video.image_urls:
+                from .visual import extract_visual
+                atomic_json(result_path, extract_visual(video, output_dir / ".cache", self.runner))
+                transcripts.append(transcript_from_json(result_path, video))
+                continue
+            if "youtube.com" in video.url or "youtu.be/" in video.url:
+                if video.id not in self._caption_results:
+                    future = self._caption_futures.get(video.id)
+                    self._caption_results[video.id] = future.result() if future else youtube_captions(video, output_dir / ".cache", self.runner)
+                caption_result = self._caption_results[video.id]
+                if caption_result:
+                    atomic_json(result_path, self._visual_context({"video": video.to_dict(), "segments": caption_result,
+                        "method": "youtube_captions", "language": language}, video, output_dir, on_output))
+                    transcripts.append(transcript_from_json(result_path, video))
+                    continue
+            local_audio = prepare_audio(video, output_dir / ".cache", self.runner, on_output)
+            if on_output:
+                on_output("stdout", "Loading Faster Whisper INT8 model\n")
+                on_output("stdout", "Transcribing with Faster Whisper INT8\n")
+            recognition = fast_whisper_transcribe(str(local_audio), model, language)
+            # Legacy adapters may still return timestamped text.
+            if isinstance(recognition, str):
+                recognition = {"transcript": recognition,
+                    "segments": [asdict(s) for s in segments_from_timestamped_text(recognition, video.duration)]}
+            raw = recognition["transcript"]
+            visual_error = None
+            if not raw.strip():
+                try:
+                    from .visual import extract_visual
+                    visual = extract_visual(video, output_dir / ".cache", self.runner)
+                    if visual["segments"]:
+                        atomic_json(result_path, visual)
+                        transcripts.append(transcript_from_json(result_path, video))
+                        continue
+                except Exception as exc:
+                    visual_error = f"{type(exc).__name__}: {exc}"[-350:]
+                    if on_output:
+                        on_output("stderr", f"Lectura visual pendiente: {type(exc).__name__}\n")
+            atomic_json(result_path, self._visual_context({"video": video.to_dict(), **recognition,
+                "method": "faster_whisper", "model": model, "language": language,
+                "visual_error": visual_error}, video, output_dir, on_output))
+            transcripts.append(transcript_from_json(result_path, video))
+        return transcripts
 
     def _process_transcript_only(
         self,
@@ -120,13 +231,14 @@ class SummarizeAdapter:
         transcripts: list[Transcript] = []
         for video in videos:
             result_path = output_dir / f"{video.id}.json"
+            source = video.media_url or video.url
             self.runner.run(
                 [
                     str(python),
                     "-m",
                     "creator_skill.transcribe_worker",
                     "--source",
-                    video.url,
+                    source,
                     "--video-id",
                     video.id,
                     "--output",
@@ -156,10 +268,11 @@ class SummarizeAdapter:
         whisper_model = os.environ.get("CREATOR_SKILL_WHISPER_MODEL", "tiny")
         language = os.environ.get("CREATOR_SKILL_LANGUAGE", "auto")
         before = set(output_dir.glob("*.json"))
+        sources = [video.media_url or video.url for video in videos]
         command = [
             self.executable,
             "--source",
-            *[video.url for video in videos],
+            *sources,
             "--type",
             "Video URL",
             "--output-dir",
@@ -204,13 +317,14 @@ class SummarizeAdapter:
                 by_source[source] = path
         transcripts: list[Transcript] = []
         for video in videos:
-            path = by_source.get(video.url)
+            source = video.media_url or video.url
+            path = by_source.get(source)
             if path is None:
                 raise CreatorSkillError(f"Missing summarizer result for video {video.id}")
             data = json.loads(path.read_text(encoding="utf-8"))
             transcript_path = cache_dir / (
                 self._cache_key(
-                    video.url,
+                    source,
                     transcription=transcription,
                     whisper_model=whisper_model,
                     language=language,
