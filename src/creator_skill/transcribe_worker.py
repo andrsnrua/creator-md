@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 def parser() -> argparse.ArgumentParser:
@@ -51,53 +52,93 @@ def main(argv: list[str] | None = None) -> int:
         "cache_transcript_dir": str(args.cache_dir),
         "cobalt_base_url": args.cobalt_url,
     }
-    try:
-        transcript = get_transcript(config)
-    except Exception as primary_error:
-        yt_dlp = shutil.which("yt-dlp")
-        if not yt_dlp:
-            raise
+    host = (urlsplit(args.source).hostname or "").lower()
+    if host.endswith("tiktokcdn.com"):
         print(
-            "[fallback] La descarga de audio falló; probando video H.264 temporal",
+            "[tiktok] Descargando audio desde el canal oficial",
             flush=True,
         )
-        with tempfile.TemporaryDirectory(prefix="creator-md-fallback-") as temp_dir:
-            template = str(Path(temp_dir) / "video.%(ext)s")
+        with tempfile.TemporaryDirectory(prefix="creator-md-tiktok-") as temp_dir:
+            audio_path = Path(temp_dir) / "audio.wav"
             completed = subprocess.run(
                 [
-                    yt_dlp,
-                    "--no-playlist",
-                    "--retries",
-                    "3",
-                    "--fragment-retries",
-                    "3",
-                    "-f",
-                    "best[acodec!=none][vcodec^=h264]/best[acodec!=none]",
-                    "-o",
-                    template,
+                    "ffmpeg",
+                    "-y",
+                    "-loglevel",
+                    "error",
+                    "-i",
                     args.source,
+                    "-vn",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "16000",
+                    str(audio_path),
                 ],
                 text=True,
+                capture_output=True,
                 check=False,
             )
-            media = [
-                path
-                for path in Path(temp_dir).glob("video.*")
-                if path.suffix not in {".part", ".ytdl"}
-            ]
-            if completed.returncode or not media:
-                raise primary_error
-            print(
-                "[fallback] Video H.264 listo; iniciando Whisper",
-                flush=True,
-            )
+            if completed.returncode or not audio_path.exists():
+                raise RuntimeError(
+                    "No se pudo descargar el audio público de TikTok: "
+                    f"{completed.stderr[-400:]}"
+                )
             transcript = transcribe_audio(
-                str(media[0]),
+                str(audio_path),
                 args.transcription,
                 True,
                 args.whisper_model,
                 args.language,
             )
+    else:
+        try:
+            transcript = get_transcript(config)
+        except Exception as primary_error:
+            yt_dlp = shutil.which("yt-dlp")
+            if not yt_dlp:
+                raise
+            print(
+                "[fallback] La descarga de audio falló; probando video H.264 temporal",
+                flush=True,
+            )
+            with tempfile.TemporaryDirectory(prefix="creator-md-fallback-") as temp_dir:
+                template = str(Path(temp_dir) / "video.%(ext)s")
+                completed = subprocess.run(
+                    [
+                        yt_dlp,
+                        "--no-playlist",
+                        "--retries",
+                        "3",
+                        "--fragment-retries",
+                        "3",
+                        "-f",
+                        "best[acodec!=none][vcodec^=h264]/best[acodec!=none]",
+                        "-o",
+                        template,
+                        args.source,
+                    ],
+                    text=True,
+                    check=False,
+                )
+                media = [
+                    path
+                    for path in Path(temp_dir).glob("video.*")
+                    if path.suffix not in {".part", ".ytdl"}
+                ]
+                if completed.returncode or not media:
+                    raise primary_error
+                print(
+                    "[fallback] Video H.264 listo; iniciando Whisper",
+                    flush=True,
+                )
+                transcript = transcribe_audio(
+                    str(media[0]),
+                    args.transcription,
+                    True,
+                    args.whisper_model,
+                    args.language,
+                )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(

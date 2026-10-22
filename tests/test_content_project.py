@@ -20,7 +20,7 @@ def fixture_videos() -> list[Video]:
 def install_fixture_adapters(content: ContentProject) -> None:
     videos = fixture_videos()
 
-    def discover(profile, output_path, max_videos=None):
+    def discover(profile, output_path, max_videos=None, reference_url=None):
         selected = videos[:max_videos]
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(
@@ -41,6 +41,7 @@ def install_fixture_adapters(content: ContentProject) -> None:
 
     content.project.collector.discover = discover
     content.project.summarizer.process = process
+    content.project.collector.resolve_media = lambda video: video
 
 
 def test_extract_then_continue_builds_one_markdown_and_history(tmp_path):
@@ -80,7 +81,7 @@ def test_continue_preserves_cursor_when_a_newer_video_appears(tmp_path):
     videos = fixture_videos()
     available = videos[:2]
 
-    def discover(profile, output_path, max_videos=None):
+    def discover(profile, output_path, max_videos=None, reference_url=None):
         selected = available[:max_videos]
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(
@@ -101,6 +102,7 @@ def test_continue_preserves_cursor_when_a_newer_video_appears(tmp_path):
 
     content.project.collector.discover = discover
     content.project.summarizer.process = process
+    content.project.collector.resolve_media = lambda video: video
     content.start("https://www.tiktok.com/@demo", 1)
 
     available.insert(0, videos[2])
@@ -119,7 +121,7 @@ def test_progress_reports_video_completion(tmp_path):
     )
     videos = fixture_videos()
 
-    def discover(profile, output_path, max_videos=None):
+    def discover(profile, output_path, max_videos=None, reference_url=None):
         selected = videos[:max_videos]
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(
@@ -143,6 +145,7 @@ def test_progress_reports_video_completion(tmp_path):
 
     content.project.collector.discover = discover
     content.project.summarizer.process = process
+    content.project.collector.resolve_media = lambda video: video
     content.start("https://www.tiktok.com/@demo", 1)
     assert events[-1]["percent"] == 100
     assert any(event["stage"] == "completed_video" for event in events)
@@ -163,3 +166,23 @@ def test_retry_failed_video_can_recover(tmp_path):
     assert content.project.state.load()["videos"][video.id]["status"] == "completed"
     history = json.loads(content.history_path.read_text())
     assert history["runs"][-1]["action"] == "retry_failed"
+
+
+def test_preview_filters_dates_and_reports_pending(tmp_path):
+    content = ContentProject(
+        tmp_path / "workspaces",
+        "demo_preview",
+        category="Finanzas personales",
+    )
+    install_fixture_adapters(content)
+    result = content.preview(
+        "https://www.tiktok.com/@demo",
+        "2026-07-01",
+        "2026-07-31",
+        100,
+    )
+    assert result["total"] >= 1
+    assert result["pending"] == result["total"]
+    assert result["selected_ids"]
+    assert content.name == "demo-preview"
+    assert content.category == "finanzas-personales"

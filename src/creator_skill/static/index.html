@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Panel · Creator MD</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 22'%3E%3Crect width='30' height='22' rx='6' fill='%23e00000'/%3E%3Crect x='6' y='6' width='10' height='2.2' rx='1.1' fill='%23fff'/%3E%3Crect x='6' y='10' width='13' height='2.2' rx='1.1' fill='%23fff'/%3E%3Crect x='6' y='14' width='8' height='2.2' rx='1.1' fill='%23fff'/%3E%3Cpath d='M20 13.5v-4l4 2Z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Saltar al contenido</a>
+
+<header class="appbar">
+  <div class="appbar-left">
+    <button class="round" id="menu-toggle" aria-label="Menú" aria-controls="side" aria-expanded="true"><svg class="ic" data-icon="menu"></svg></button>
+    <a class="logo" href="#panel" aria-label="Creator MD, ir al panel">
+      <svg class="logo-mark" viewBox="0 0 30 22" aria-hidden="true"><rect class="lm-bg" width="30" height="22" rx="6"/><rect class="lm-fg" x="6" y="6" width="10" height="2.2" rx="1.1"/><rect class="lm-fg" x="6" y="10" width="13" height="2.2" rx="1.1"/><rect class="lm-fg" x="6" y="14" width="8" height="2.2" rx="1.1"/><path class="lm-fg" d="M20 13.5v-4l4 2Z"/></svg>
+      <span>Creator</span><small>MD</small>
+    </a>
+  </div>
+  <form class="searchbox" id="global-search" role="search">
+    <svg class="ic" data-icon="search"></svg>
+    <label class="sr-only" for="global-query">Buscar en tus transcripciones</label>
+    <input id="global-query" type="search" placeholder="Buscar en tus transcripciones" autocomplete="off">
+    <kbd class="kbd" aria-hidden="true">/</kbd>
+  </form>
+  <div class="appbar-right">
+    <button class="job-pill" id="job-pill" hidden><span class="ring" aria-hidden="true"></span><span id="job-pill-text">0 %</span></button>
+    <div class="menu-wrap">
+      <button class="create" id="create-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="create-menu"><svg class="ic" data-icon="create"></svg><span>Añadir</span></button>
+      <div class="menu" id="create-menu" role="menu" hidden>
+        <button role="menuitem" data-add=""><svg class="ic" data-icon="person-add"></svg>Persona o canal</button>
+        <button role="menuitem" data-import-any><svg class="ic" data-icon="paste"></svg>Importar transcripción</button>
+        <button role="menuitem" data-new-area><svg class="ic" data-icon="folder"></svg>Área nueva</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="side" id="side" aria-label="Navegación principal">
+    <div class="side-id" id="side-id"></div>
+    <div class="nav" id="main-nav">
+      <a href="#panel" data-route="panel"><svg class="ic" data-icon="dashboard"></svg><span>Panel</span></a>
+      <a href="#contenido" data-route="contenido"><svg class="ic" data-icon="content"></svg><span>Contenido</span><span class="count warn" id="nav-attention"></span></a>
+      <a href="#conocimiento" data-route="conocimiento"><svg class="ic" data-icon="bulb"></svg><span>Conocimiento</span></a>
+      <a href="#skills" data-route="skills"><svg class="ic" data-icon="doc"></svg><span>Skills</span></a>
+      <a href="#actividad" data-route="actividad"><svg class="ic" data-icon="history"></svg><span>Actividad</span><span class="count live" id="nav-activity"></span></a>
+    </div>
+    <div class="side-people" id="side-people"></div>
+    <div class="side-foot">
+      <div class="nav">
+        <button type="button" id="open-settings"><svg class="ic" data-icon="settings"></svg><span>Configuración</span></button>
+        <a href="/classic"><svg class="ic" data-icon="flag"></svg><span>Importación avanzada</span></a>
+      </div>
+      <p class="side-status" id="schedule-state"></p>
+    </div>
+  </nav>
+  <div class="scrim" id="scrim" hidden></div>
+
+  <main id="main" class="main" tabindex="-1">
+    <section id="view-panel" class="view" aria-labelledby="panel-title"></section>
+    <section id="view-contenido" class="view view-flush" aria-labelledby="contenido-title" hidden></section>
+    <section id="view-persona" class="view" aria-labelledby="persona-title" hidden></section>
+
+    <section id="view-conocimiento" class="view" aria-labelledby="conocimiento-title" hidden>
+      <div class="page-head">
+        <div><h1 id="conocimiento-title">Conocimiento</h1><p class="page-sub" id="knowledge-sub">Busca dentro de las transcripciones y abre el momento exacto del video.</p></div>
+        <div class="actions">
+          <button class="pill pill-line" id="build-knowledge"><svg class="ic" data-icon="refresh"></svg>Reconstruir índice</button>
+          <a class="pill pill-solid" id="download-skill" href="/skill?area=ads" download="ads-evidence.zip"><svg class="ic" data-icon="download"></svg>Descargar skill</a>
+        </div>
+      </div>
+      <form class="research" id="knowledge-search" role="search">
+        <label class="research-box">
+          <svg class="ic" data-icon="search"></svg>
+          <span class="sr-only">Buscar en las transcripciones</span>
+          <input id="knowledge-query" type="search" placeholder="Busca una idea: presupuesto, WhatsApp, creativos…" autocomplete="off">
+        </label>
+        <label class="select-chip"><span class="sr-only">Área</span><select id="knowledge-area"></select></label>
+      </form>
+      <div class="chips" id="person-filters" role="group" aria-label="Filtrar por persona"></div>
+      <div class="split">
+        <div class="results-col">
+          <div id="insights"></div>
+          <p class="results-meta" id="knowledge-count" aria-live="polite"></p>
+          <ol class="results" id="knowledge-results"></ol>
+          <button class="pill pill-line pill-block" id="load-more" hidden>Mostrar más videos</button>
+        </div>
+        <aside class="reader card" id="reader" aria-label="Transcripción seleccionada" tabindex="-1"></aside>
+      </div>
+      <p class="fineprint">El índice conserva autor, fecha, tiempos y huella del original. Los temas se asignan automáticamente y no validan lo que afirma cada creador.</p>
+    </section>
+
+    <section id="view-skills" class="view" aria-labelledby="skills-title" hidden></section>
+    <section id="view-actividad" class="view" aria-labelledby="actividad-title" hidden></section>
+  </main>
+</div>
+
+<!-- Diálogos -->
+<dialog id="add-dialog" aria-labelledby="add-title">
+  <form id="add-form">
+    <header class="dlg-head"><h2 id="add-title">Añadir persona</h2><button type="button" class="round close-dialog" aria-label="Cerrar"><svg class="ic" data-icon="close"></svg></button></header>
+    <div class="dlg-body">
+      <p class="dlg-lead">Una persona, todos sus canales. También admite videos sueltos.</p>
+      <div class="form-row">
+        <label class="field"><span>Área</span><input id="add-area" class="input" list="area-options" required placeholder="Ads, diseño, desarrollo…" maxlength="64" autocomplete="off"></label>
+        <label class="field"><span>Nombre de la persona</span><input id="add-name" class="input" list="person-options" required placeholder="Sebastián Boggiano" maxlength="100" autocomplete="off"></label>
+      </div>
+      <datalist id="area-options"></datalist><datalist id="person-options"></datalist>
+      <label class="field"><span>Enlaces de canales o videos</span>
+        <textarea id="add-urls" class="input" rows="4" required placeholder="https://www.youtube.com/@creador/videos&#10;https://www.tiktok.com/@creador&#10;https://www.instagram.com/creador/"></textarea>
+        <small>Uno por línea, hasta 10. Los perfiles se actualizan; los videos sueltos se procesan una vez.</small>
+      </label>
+      <ul class="detected" id="add-detected" aria-live="polite"></ul>
+      <p id="add-error" role="alert" class="form-error"></p>
+    </div>
+    <footer class="dlg-foot"><button type="button" class="pill close-dialog">Cancelar</button><button class="pill pill-solid">Guardar</button></footer>
+  </form>
+</dialog>
+
+<dialog id="area-dialog" aria-labelledby="area-title">
+  <form id="area-form">
+    <header class="dlg-head"><h2 id="area-title">Área nueva</h2><button type="button" class="round close-dialog" aria-label="Cerrar"><svg class="ic" data-icon="close"></svg></button></header>
+    <div class="dlg-body">
+      <p class="dlg-lead">Separa el conocimiento según lo que quieras aprender. Cada área genera su propio skill.</p>
+      <label class="field"><span>Nombre del área</span><input id="area-name" class="input" required maxlength="64" placeholder="Ads, diseño, desarrollo…" autocomplete="off"></label>
+      <p id="area-error" class="form-error" role="alert"></p>
+    </div>
+    <footer class="dlg-foot"><button type="button" class="pill close-dialog">Cancelar</button><button class="pill pill-solid">Crear área</button></footer>
+  </form>
+</dialog>
+
+<dialog id="import-dialog" aria-labelledby="import-heading">
+  <form id="import-form">
+    <header class="dlg-head"><h2 id="import-heading">Importar transcripción</h2><button type="button" class="round close-dialog" aria-label="Cerrar"><svg class="ic" data-icon="close"></svg></button></header>
+    <div class="dlg-body">
+      <p class="dlg-lead">Completa un video al que el extractor no pudo acceder. Se conserva su enlace para verificar la fuente.</p>
+      <label class="field" id="import-person-field"><span>Persona</span><select id="import-person" class="input"></select></label>
+      <label class="field"><span>Enlace del video</span><input id="import-url" class="input" type="url" required placeholder="https://www.instagram.com/reel/…"></label>
+      <label class="field"><span>Título <em>opcional</em></span><input id="import-title" class="input" maxlength="300"></label>
+      <label class="field"><span>Transcripción</span><textarea id="import-text" class="input" rows="7" required minlength="30" placeholder="Pega el texto o líneas con tiempos: 00:00:15 Texto del fragmento"></textarea></label>
+      <p id="import-error" class="form-error" role="alert"></p>
+    </div>
+    <footer class="dlg-foot"><button type="button" class="pill close-dialog">Cancelar</button><button class="pill pill-solid">Guardar transcripción</button></footer>
+  </form>
+</dialog>
+
+<dialog id="source-dialog" aria-labelledby="source-title">
+  <form id="source-form">
+    <header class="dlg-head"><div><h2 id="source-title">Fuente</h2><p class="dlg-url" id="source-url"></p></div><button type="button" class="round close-dialog" aria-label="Cerrar"><svg class="ic" data-icon="close"></svg></button></header>
+    <div class="dlg-body">
+      <dl class="facts" id="source-facts"></dl>
+      <label class="switch-row"><input type="checkbox" role="switch" id="source-enabled" class="switch"><span><b>Incluir en las actualizaciones</b><small id="source-enabled-hint">Se consulta en «Actualizar todo» y en la programación.</small></span></label>
+      <label class="field"><span>Publicaciones que consultar por ejecución</span><input type="number" id="source-limit" class="input input-num" min="1" max="1000" required><small>Es un límite de consulta, no una garantía de cobertura.</small></label>
+      <div class="history-box" id="source-history-box">
+        <div><b>Recuperar historial</b><small id="source-history-hint">Busca hasta 10 000 publicaciones e incorpora huecos antiguos. Procesa hasta 1000 pendientes por ejecución y conserva los ya transcritos.</small></div>
+        <button type="button" id="source-history" class="pill pill-line pill-sm"><svg class="ic" data-icon="history"></svg>Recuperar</button>
+      </div>
+      <p id="source-error" role="alert" class="form-error"></p>
+    </div>
+    <footer class="dlg-foot">
+      <a id="source-md" class="pill foot-start" href="#" target="_blank" rel="noopener"><svg class="ic" data-icon="doc"></svg>Abrir Markdown</a>
+      <button type="button" class="pill close-dialog">Cancelar</button><button class="pill pill-solid">Guardar</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog id="settings-dialog" class="dlg-wide" aria-labelledby="settings-title">
+  <div class="settings-shell">
+    <header class="dlg-head"><h2 id="settings-title">Configuración</h2><button type="button" class="round close-dialog" aria-label="Cerrar"><svg class="ic" data-icon="close"></svg></button></header>
+    <div class="settings-grid">
+      <nav class="settings-nav" role="tablist" aria-label="Secciones de configuración">
+        <button role="tab" aria-selected="true" data-settings-tab="general">General</button>
+        <button role="tab" aria-selected="false" data-settings-tab="asr">Transcripción</button>
+        <button role="tab" aria-selected="false" data-settings-tab="paid">Proveedores</button>
+        <button role="tab" aria-selected="false" data-settings-tab="system">Sistema</button>
+      </nav>
+      <div class="settings-panes">
+        <form id="settings-form">
+          <section class="pane" data-pane="general" role="tabpanel">
+            <h3>Actualizaciones automáticas</h3>
+            <p class="pane-lead">Corren mientras Creator MD esté abierto en este equipo. Cerrar la pestaña no detiene el servidor; apagar el equipo sí.</p>
+            <label class="switch-row"><input type="checkbox" role="switch" id="schedule-enabled" class="switch"><span><b>Consultar y procesar las fuentes periódicamente</b><small>Solo las fuentes con seguimiento activo.</small></span></label>
+            <fieldset class="field"><legend>Consultar cada</legend>
+              <div class="seg" id="interval">
+                <label><input type="radio" name="interval" value="6"><span>6 h</span></label>
+                <label><input type="radio" name="interval" value="12"><span>12 h</span></label>
+                <label><input type="radio" name="interval" value="24"><span>24 h</span></label>
+                <label><input type="radio" name="interval" value="48"><span>48 h</span></label>
+                <label><input type="radio" name="interval" value="168"><span>7 días</span></label>
+              </div>
+            </fieldset>
+            <label class="field"><span>Máximo de videos por fuente y ejecución</span><input id="process-limit" type="number" min="1" max="1000" value="50" class="input input-num" required></label>
+          </section>
+          <section class="pane" data-pane="asr" role="tabpanel" hidden>
+            <h3>Modelo de transcripción local</h3>
+            <p class="pane-lead">Primero se usan los subtítulos públicos. Si faltan, se transcribe el audio en tu equipo. El cambio afecta a los videos futuros y puede descargar el modelo.</p>
+            <div class="options" id="asr-model">
+              <label class="option"><input type="radio" name="asr-model" value="base"><span><b>Base</b><small>Rápido. Revisa cifras y nombres.</small></span></label>
+              <label class="option"><input type="radio" name="asr-model" value="small"><span><b>Small</b><small>Más precisión con poco coste.</small></span></label>
+              <label class="option"><input type="radio" name="asr-model" value="medium"><span><b>Medium</b><small>Más exigente con el equipo.</small></span></label>
+              <label class="option"><input type="radio" name="asr-model" value="large-v3"><span><b>Large v3</b><small>Máxima capacidad, más lento.</small></span></label>
+              <label class="option"><input type="radio" name="asr-model" value="turbo"><span><b>Turbo</b><small>Capacidad alta, más rápido que Large.</small></span></label>
+            </div>
+          </section>
+          <section class="pane" data-pane="paid" role="tabpanel" hidden>
+            <h3>Consultas de pago</h3>
+            <p class="pane-lead">TikTok gratuito solo entrega una muestra reciente. Apify usa tu cuenta y puede generar cargos; tampoco garantiza eliminar todas las restricciones.</p>
+            <label class="switch-row"><input id="allow-paid" type="checkbox" role="switch" class="switch"><span><b>Permitir consultas de Apify</b><small>Desactivado: solo consultas gratuitas.</small></span></label>
+          </section>
+        </form>
+        <form id="apify-form" class="pane pane-sub" data-pane="paid" hidden>
+          <h3>Conexión de Apify</h3>
+          <p class="pane-lead" id="apify-status">Comprobando…</p>
+          <label class="field"><span>Token de API</span><input type="password" id="apify-token" class="input" autocomplete="off" placeholder="Se guarda de forma segura en Windows" required></label>
+          <div class="inline-actions"><button class="pill pill-line">Guardar conexión</button><button type="button" class="pill pill-danger" id="apify-remove" hidden>Quitar conexión</button></div>
+        </form>
+        <section class="pane" data-pane="system" role="tabpanel" hidden>
+          <h3>Herramientas locales</h3>
+          <ul class="deps" id="dependencies"></ul>
+          <h3>Qué puede recopilar</h3>
+          <dl class="caps">
+            <div><dt><svg class="ic" data-icon="youtube"></svg>YouTube</dt><dd>Canales, videos, Shorts y subtítulos públicos. Cada pestaña tiene su propia cobertura.</dd></div>
+            <div><dt><svg class="ic" data-icon="tiktok"></svg>TikTok</dt><dd>Muestra pública reciente. Con Apify, consultas más profundas.</dd></div>
+            <div><dt><svg class="ic" data-icon="instagram"></svg>Instagram</dt><dd>Reels y videos accesibles al extractor. Puede limitar perfiles; importa el texto como alternativa.</dd></div>
+          </dl>
+          <a class="link-btn" href="/classic">Importación avanzada: selección manual, fechas e historial</a>
+        </section>
+      </div>
+    </div>
+    <footer class="dlg-foot"><span class="save-state" id="settings-state" aria-live="polite"></span><button type="button" class="pill close-dialog">Cerrar</button><button class="pill pill-solid" form="settings-form" id="settings-save">Guardar</button></footer>
+  </div>
+</dialog>
+
+<section class="dock" id="job-dock" hidden aria-labelledby="dock-title">
+  <header class="dock-head"><strong id="dock-title">Procesando</strong><button class="round round-sm" id="dock-toggle" aria-label="Contraer" aria-expanded="true"><svg class="ic" data-icon="caret"></svg></button></header>
+  <div class="dock-body" id="dock-body">
+    <div class="dock-row"><span class="dock-icon" id="dock-icon"></span><div><b id="dock-target"></b><p id="dock-message" aria-live="polite">Preparando…</p></div><span class="dock-pct" id="dock-pct">0 %</span></div>
+    <div class="bar"><span id="dock-bar"></span></div>
+    <a class="link-btn" href="#actividad">Ver actividad</a>
+  </div>
+</section>
+<div class="snacks" id="snacks" role="status" aria-live="polite"></div>
+</body>
+</html>

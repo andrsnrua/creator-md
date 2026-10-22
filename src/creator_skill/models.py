@@ -27,9 +27,12 @@ class Video:
     published_at: str | None = None
     duration: float | None = None
     creator: str = ""
+    media_url: str | None = None
     status: str = "pending"
     source_hash: str | None = None
     error: str | None = None
+    media_type: str = "video"
+    image_urls: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "Video":
@@ -46,4 +49,5 @@ class Transcript:
     segments: list[Segment] = field(default_factory=list)
     visual_notes: list[dict[str, Any]] = field(default_factory=list)
     raw_text: str = ""
+    method: str = "automatic"
 

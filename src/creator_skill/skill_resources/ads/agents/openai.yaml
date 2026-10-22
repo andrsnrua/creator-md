@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ads con Sebastián y evidencia"
+  short_description: "Estrategia, creativos y rentabilidad para cada negocio"
+  default_prompt: "Usa $ads-evidence para diagnosticar mi negocio y proponer una estrategia de Ads con fuentes, creativos, economía y pruebas medibles."
